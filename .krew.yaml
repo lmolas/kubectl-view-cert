@@ -1,0 +1,19 @@
+apiVersion: krew.googlecontainertools.github.com/v1alpha2
+kind: Plugin
+metadata:
+  name: cert-exp
+spec:
+  version: v0.0.0
+  homepage: https://github.com/lmolas/kubectl-cert-exp
+  shortDescription: Show certificate expiration extracted from secrets
+  description: |
+    This plugin shows expiration date of certificates extracted from secrets.
+    Supported secret types are kubernetes.io/tls and istio.io/key-and-cert.
+  platforms:
+  - selector:
+      matchLabels:
+        os: darwin
+        arch: amd64
+    uri: https://github.com/lmolas/kubectl-cert-exp/releases/download/v0.0.0.tar.gz
+    sha256: f158c8d87d94508fe4d9b47689eb0a8eb9f3ad955c142d2d5f05f854238fbb5a
+    bin: kubectl-cert-exp
