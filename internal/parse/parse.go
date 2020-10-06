@@ -6,37 +6,67 @@ import (
 	"encoding/pem"
 	"fmt"
 	"os"
+	"time"
 
-	"github.com/olekukonko/tablewriter"
+	"github.com/jedib0t/go-pretty/table"
 	"k8s.io/klog"
 )
 
 type CertificateData struct {
 	SecretName    string
+	Namespace     string
 	Certificate   string
 	CaCertificate string
 }
 
 type ParsedCertificateData struct {
 	SecretName    string
+	Namespace     string
 	Certificate   *x509.Certificate
 	CaCertificate *x509.Certificate
 }
 
-func (p *ParsedCertificateData) Output() {
+func (p *ParsedCertificateData) Output(date *time.Time) {
+	if p.CaCertificate == nil && p.Certificate == nil {
+		return
+	}
 
-	klog.Info(p.SecretName)
+	var certRow, caCertRow table.Row
 
-	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"Issuer", "Subject", "SerialNumber", "Expired"})
+	if p.Certificate != nil {
+		if (date != nil && date.After(p.Certificate.NotAfter)) || date == nil {
+			certRow = []interface{}{fmt.Sprintf("%s/%s", p.Namespace, p.SecretName), "Cert", p.Certificate.Issuer.String(), p.Certificate.Subject.String(), p.Certificate.NotAfter.String()}
+		}
+	}
+	if p.CaCertificate != nil {
+		if (date != nil && date.After(p.CaCertificate.NotAfter)) || date == nil {
+			caCertRow = []interface{}{fmt.Sprintf("%s/%s", p.Namespace, p.SecretName), "CaCert", p.CaCertificate.Issuer.String(), p.CaCertificate.Subject.String(), p.CaCertificate.NotAfter.String()}
+		}
+	}
 
-	table.Append([]string{p.Certificate.Issuer.String(), p.Certificate.Subject.String(), p.Certificate.SerialNumber.String(), p.Certificate.NotAfter.String()})
-	table.Append([]string{p.CaCertificate.Issuer.String(), p.CaCertificate.Subject.String(), p.CaCertificate.SerialNumber.String(), p.CaCertificate.NotAfter.String()})
+	if len(certRow) == 0 && len(caCertRow) == 0 {
+		return
+	}
 
-	table.Render() // Send output
+	t := table.NewWriter()
+	t.SetOutputMirror(os.Stdout)
+	t.AppendHeader(table.Row{"Secret", "Type", "Issuer", "Subject", "Not After"})
+
+	if len(certRow) > 0 {
+		t.AppendRow(certRow)
+	}
+
+	if len(caCertRow) > 0 {
+		t.AppendRow(caCertRow)
+	}
+
+	t.SetStyle(table.StyleColoredBlackOnYellowWhite)
+	t.Render()
+
+	fmt.Println("")
 }
 
-func NewCertificateData(secretName string, data map[string]interface{}) (*CertificateData, error) {
+func NewCertificateData(ns, secretName string, data map[string]interface{}) (*CertificateData, error) {
 	secretType := fmt.Sprintf("%v", data["type"])
 
 	if secretType == "kubernetes.io/tls" {
@@ -44,10 +74,20 @@ func NewCertificateData(secretName string, data map[string]interface{}) (*Certif
 		certsMap := data["data"].(map[string]interface{})
 
 		certData := CertificateData{
-			SecretName:    secretName,
-			Certificate:   fmt.Sprintf("%v", certsMap["tls.crt"]),
-			CaCertificate: fmt.Sprintf("%v", certsMap["ca.crt"]),
+			SecretName: secretName,
+			Namespace:  ns,
 		}
+
+		if val, ok := certsMap["tls.crt"]; ok {
+			certData.Certificate = fmt.Sprintf("%v", val)
+		}
+
+		if val, ok := certsMap["ca.crt"]; ok {
+			certData.CaCertificate = fmt.Sprintf("%v", val)
+		}
+
+		klog.V(1).Infof("Cert %s", certData.Certificate)
+		klog.V(1).Infof("CaCert %s", certData.CaCertificate)
 
 		return &certData, nil
 
@@ -57,18 +97,28 @@ func NewCertificateData(secretName string, data map[string]interface{}) (*Certif
 }
 
 func (c *CertificateData) ParseCertificates() (*ParsedCertificateData, error) {
-	cert, err := parse(c.Certificate)
-	if err != nil {
-		return nil, fmt.Errorf("unable to parse certificate %w", err)
+	var cert *x509.Certificate
+	var err error
+
+	if c.Certificate != "" {
+		cert, err = parse(c.Certificate)
+		if err != nil {
+			return nil, fmt.Errorf("unable to parse certificate %w", err)
+		}
+
 	}
 
-	caCert, err := parse(c.CaCertificate)
-	if err != nil {
-		return nil, fmt.Errorf("unable to parse ca certificate %w", err)
+	var caCert *x509.Certificate
+	if c.CaCertificate != "" {
+		caCert, err = parse(c.CaCertificate)
+		if err != nil {
+			return nil, fmt.Errorf("unable to parse ca certificate %w", err)
+		}
 	}
 
 	result := ParsedCertificateData{
 		SecretName:    c.SecretName,
+		Namespace:     c.Namespace,
 		Certificate:   cert,
 		CaCertificate: caCert,
 	}
