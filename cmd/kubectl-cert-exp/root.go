@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -36,10 +37,9 @@ var rootCmd = &cobra.Command{
 	Use:          "kubectl cert-exp",
 	SilenceUsage: true, // for when RunE returns an error
 	Short:        "Show certificate fields from secrets",
-	Example: "  kubectl tree deployment my-app\n" +
-		"  kubectl tree kservice.v1.serving.knative.dev my-app", // TODO add more examples about disambiguation etc
-	RunE:    run,
-	Version: versionString(),
+	Example:      "kubectl cert-exp -A -E",
+	RunE:         run,
+	Version:      versionString(),
 }
 
 // versionString returns the version prefixed by 'v'
@@ -67,7 +67,7 @@ func init() {
 
 	rootCmd.Flags().BoolP(allNamespacesFlag, "A", false, "query all objects in all API groups, both namespaced and non-namespaced")
 	rootCmd.Flags().BoolP(expiredFlag, "E", false, "show only expired certificates")
-	rootCmd.Flags().IntP(expiredDaysFromNowFlag, "D", 30, "check expired certificates compared to now plus number of days")
+	rootCmd.Flags().IntP(expiredDaysFromNowFlag, "D", 0, "check expired certificates compared to now plus number of days")
 
 	cf.AddFlags(rootCmd.Flags())
 	if err := flag.Set("logtostderr", "true"); err != nil {
@@ -97,9 +97,10 @@ func main() {
 }
 
 func run(command *cobra.Command, args []string) error {
-	// TODO flag to display cacert (false by default)
+	// TODO: flag to display cacert (false by default)
 	klog.V(1).Info("Run kubectl cert-exp")
 
+	// Parse flags and arguments
 	allNs, err := command.Flags().GetBool(allNamespacesFlag)
 	if err != nil {
 		allNs = false
@@ -115,20 +116,6 @@ func run(command *cobra.Command, args []string) error {
 		expiredInDays = 0
 	}
 
-	restConfig, err := cf.ToRESTConfig()
-	if err != nil {
-		return err
-	}
-	restConfig.QPS = 1000
-	restConfig.Burst = 1000
-	dyn, err := dynamic.NewForConfig(restConfig)
-	if err != nil {
-		return fmt.Errorf("failed to construct dynamic client: %w", err)
-	}
-
-	ns := getNamespace()
-	klog.V(1).Infof("namespace=%s allNamespaces=%v", ns, allNs)
-
 	var secretName string
 	if len(args) > 0 {
 		secretName = args[0]
@@ -139,9 +126,125 @@ func run(command *cobra.Command, args []string) error {
 		secretKey = args[1]
 	}
 
+	// Prepare clients to interact with kubernetes api
+	ns, ri, err := getResourceInterface(allNs, secretName)
+	if err != nil {
+		return err
+	}
+
+	if secretName != "" {
+		datas, err := getData(secretName, ns, secretKey, ri)
+		if err != nil {
+			return err
+		}
+
+		// Display
+		displayDatas(datas)
+	} else {
+		datas, err := getDatas(ri)
+		if err != nil {
+			return err
+		}
+
+		// Filter Datas
+		filteredDatas := datas
+		klog.V(1).Infof("Number of certificates found %d", len(datas))
+
+		klog.V(1).Infof("expired %t expiredInDays %d", expired, expiredInDays)
+		if expired && expiredInDays == 0 {
+			filteredDatas = filter(datas, time.Now().UTC(), dateAfterFilter)
+		} else if expiredInDays > 0 {
+			filteredDatas = filter(datas, time.Now().AddDate(0, 0, expiredInDays).UTC(), dateAfterFilter)
+		}
+
+		// Display
+		displayDatas(filteredDatas)
+	}
+
+	return nil
+}
+
+func getDatas(ri dynamic.ResourceInterface) ([]*Certificate, error) {
+	klog.V(1).Info("Scanning secrets")
+	datas := make([]*Certificate, 0)
+
+	tlsSecrets, err := ri.List(v1.ListOptions{FieldSelector: "type=kubernetes.io/tls"})
+	if err != nil {
+		return datas, fmt.Errorf("failed to get secrets: %w", err)
+	}
+
+	for _, tlsSecret := range tlsSecrets.Items {
+		certData, caCertData, err := parseData(tlsSecret.GetNamespace(), tlsSecret.GetName(), tlsSecret.Object, "")
+		if err != nil {
+			return datas, err
+		}
+
+		if certData != nil {
+			datas = append(datas, certData)
+		}
+
+		if caCertData != nil {
+			datas = append(datas, caCertData)
+		}
+	}
+
+	return datas, nil
+}
+
+func getData(secretName, ns, secretKey string, ri dynamic.ResourceInterface) ([]*Certificate, error) {
+	klog.V(1).Infof("Get secret name %s in namespace %s", secretName, ns)
+
+	datas := make([]*Certificate, 0)
+
+	secret, err := ri.Get(secretName, v1.GetOptions{})
+	if err != nil {
+		return datas, fmt.Errorf("failed to get secret with name %s: %w", secretName, err)
+	}
+
+	certData, caCertData, err := parseData(ns, secretName, secret.Object, secretKey)
+	if err != nil {
+		return datas, err
+	}
+
+	if certData != nil {
+		datas = append(datas, certData)
+	}
+
+	if caCertData != nil {
+		datas = append(datas, caCertData)
+	}
+
+	return datas, nil
+}
+
+func displayDatas(datas []*Certificate) {
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "    ")
+	err := encoder.Encode(&datas)
+	if err != nil {
+		klog.Error(err)
+	}
+}
+
+func getResourceInterface(allNs bool, secretName string) (string, dynamic.ResourceInterface, error) {
+	restConfig, err := cf.ToRESTConfig()
+	if err != nil {
+		return "", nil, err
+	}
+	restConfig.QPS = 1000
+	restConfig.Burst = 1000
+	dyn, err := dynamic.NewForConfig(restConfig)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to construct dynamic client: %w", err)
+	}
+
+	ns := getNamespace()
+	klog.V(1).Infof("namespace=%s allNamespaces=%v", ns, allNs)
+
+	// Check arguments
 	if secretName != "" && ns == "" {
-		klog.Info("Specify namespace and secret name")
-		return nil
+		err = errors.New("secretName passed as argument but blank namespace")
+		return "", nil, err
 	}
 
 	secretGroupVersionResource := schema.GroupVersionResource{
@@ -157,74 +260,7 @@ func run(command *cobra.Command, args []string) error {
 		ri = dyn.Resource(secretGroupVersionResource).Namespace(ns)
 	}
 
-	if secretName != "" {
-		klog.V(1).Infof("Get secret name %s in namespace %s", secretName, ns)
-
-		secret, err := ri.Get(secretName, v1.GetOptions{})
-		if err != nil {
-			return fmt.Errorf("failed to get secret with name %s: %w", secretName, err)
-		}
-
-		datas := make([]*Certificate, 0)
-		certData, caCertData, err := parseData(ns, secretName, secret.Object, secretKey)
-		if err != nil {
-			klog.Error(err)
-		}
-
-		if certData != nil {
-			datas = append(datas, certData)
-		}
-
-		if caCertData != nil {
-			datas = append(datas, caCertData)
-		}
-
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "    ")
-		err = encoder.Encode(datas)
-		if err != nil {
-			klog.Error(err)
-		}
-	} else {
-		klog.V(1).Info("Scanning secrets in namespace ", ns)
-		tlsSecrets, err := ri.List(v1.ListOptions{FieldSelector: "type=kubernetes.io/tls"})
-		if err != nil {
-			return fmt.Errorf("failed to get secrets: %w", err)
-		}
-
-		datas := make([]*Certificate, 0)
-		for _, tlsSecret := range tlsSecrets.Items {
-			certData, caCertData, err := parseData(tlsSecret.GetNamespace(), tlsSecret.GetName(), tlsSecret.Object, "")
-			if err != nil {
-				klog.Error(err)
-			}
-
-			if certData != nil {
-				datas = append(datas, certData)
-			}
-
-			if caCertData != nil {
-				datas = append(datas, caCertData)
-			}
-		}
-
-		filteredDatas := datas
-
-		if expired && expiredInDays == 0 {
-			filteredDatas = filter(datas, time.Now().UTC(), dateAfterFilter)
-		} else if expiredInDays > 0 {
-			filteredDatas = filter(datas, time.Now().AddDate(0, 0, expiredInDays).UTC(), dateAfterFilter)
-		}
-
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "    ")
-		err = encoder.Encode(&filteredDatas)
-		if err != nil {
-			klog.Error(err)
-		}
-	}
-
-	return nil
+	return ns, ri, nil
 }
 
 func parseData(ns, secretName string, data map[string]interface{}, secretKey string) (certData, caCertData *Certificate, err error) {
@@ -249,6 +285,7 @@ func parseData(ns, secretName string, data map[string]interface{}, secretKey str
 		certData = &Certificate{
 			SecretName:   parsedCerts.SecretName,
 			Namespace:    parsedCerts.Namespace,
+			CertType:     "Cert",
 			Issuer:       parsedCerts.Certificate.Issuer.String(),
 			SerialNumber: fmt.Sprintf("%x", parsedCerts.Certificate.SerialNumber),
 			Subject:      parsedCerts.Certificate.Subject.String(),
@@ -261,9 +298,9 @@ func parseData(ns, secretName string, data map[string]interface{}, secretKey str
 
 	if parsedCerts.CaCertificate != nil {
 		caCertData = &Certificate{
-			IsCa:         true,
 			SecretName:   parsedCerts.SecretName,
 			Namespace:    parsedCerts.Namespace,
+			CertType:     "CA Cert",
 			Issuer:       parsedCerts.CaCertificate.Issuer.String(),
 			SerialNumber: fmt.Sprintf("%x", parsedCerts.CaCertificate.SerialNumber),
 			Subject:      parsedCerts.CaCertificate.Subject.String(),

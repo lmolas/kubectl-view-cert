@@ -6,9 +6,9 @@ import (
 
 // Certificate struct contains all certificate fields used for display
 type Certificate struct {
-	IsCa         bool
 	SecretName   string
 	Namespace    string
+	CertType     string
 	SerialNumber string
 	Issuer       string
 	Subject      string
