@@ -5,13 +5,11 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"fmt"
-	"os"
-	"time"
 
-	"github.com/jedib0t/go-pretty/table"
 	"k8s.io/klog"
 )
 
+// CertificateData struct contains base64 pem data
 type CertificateData struct {
 	SecretName    string
 	Namespace     string
@@ -19,6 +17,7 @@ type CertificateData struct {
 	CaCertificate string
 }
 
+// ParsedCertificateData struct contains decoded x509 certificates
 type ParsedCertificateData struct {
 	SecretName    string
 	Namespace     string
@@ -26,58 +25,28 @@ type ParsedCertificateData struct {
 	CaCertificate *x509.Certificate
 }
 
-func (p *ParsedCertificateData) Output(date *time.Time) {
-	if p.CaCertificate == nil && p.Certificate == nil {
-		return
+// NewCertificateData takes secret data and extracts base64 pem strings
+func NewCertificateData(ns, secretName string, data map[string]interface{}, secretKey string) (*CertificateData, error) {
+	certsMap := data["data"].(map[string]interface{})
+
+	certData := CertificateData{
+		SecretName: secretName,
+		Namespace:  ns,
 	}
 
-	var certRow, caCertRow table.Row
+	// TODO: Check if certsMap is nil ?
 
-	if p.Certificate != nil {
-		if (date != nil && date.After(p.Certificate.NotAfter)) || date == nil {
-			certRow = []interface{}{fmt.Sprintf("%s/%s", p.Namespace, p.SecretName), "Cert", p.Certificate.Issuer.String(), p.Certificate.Subject.String(), p.Certificate.NotAfter.String()}
+	if secretKey != "" {
+		if val, ok := certsMap[secretKey]; ok {
+			certData.Certificate = fmt.Sprintf("%v", val)
 		}
-	}
-	if p.CaCertificate != nil {
-		if (date != nil && date.After(p.CaCertificate.NotAfter)) || date == nil {
-			caCertRow = []interface{}{fmt.Sprintf("%s/%s", p.Namespace, p.SecretName), "CaCert", p.CaCertificate.Issuer.String(), p.CaCertificate.Subject.String(), p.CaCertificate.NotAfter.String()}
-		}
+
+		return &certData, nil
 	}
 
-	if len(certRow) == 0 && len(caCertRow) == 0 {
-		return
-	}
-
-	t := table.NewWriter()
-	t.SetOutputMirror(os.Stdout)
-	t.AppendHeader(table.Row{"Secret", "Type", "Issuer", "Subject", "Not After"})
-
-	if len(certRow) > 0 {
-		t.AppendRow(certRow)
-	}
-
-	if len(caCertRow) > 0 {
-		t.AppendRow(caCertRow)
-	}
-
-	t.SetStyle(table.StyleColoredBlackOnYellowWhite)
-	t.Render()
-
-	fmt.Println("")
-}
-
-func NewCertificateData(ns, secretName string, data map[string]interface{}) (*CertificateData, error) {
 	secretType := fmt.Sprintf("%v", data["type"])
 
-	if secretType == "kubernetes.io/tls" {
-
-		certsMap := data["data"].(map[string]interface{})
-
-		certData := CertificateData{
-			SecretName: secretName,
-			Namespace:  ns,
-		}
-
+	if secretType == "kubernetes.io/tls" { // nolint gosec
 		if val, ok := certsMap["tls.crt"]; ok {
 			certData.Certificate = fmt.Sprintf("%v", val)
 		}
@@ -90,12 +59,12 @@ func NewCertificateData(ns, secretName string, data map[string]interface{}) (*Ce
 		klog.V(1).Infof("CaCert %s", certData.CaCertificate)
 
 		return &certData, nil
-
-	} else {
-		return nil, fmt.Errorf("unsupported secret type %s", secretType)
 	}
+
+	return nil, fmt.Errorf("unsupported secret type %s", secretType)
 }
 
+// ParseCertificates method parses each base64 pem strings and creates x509 certificates
 func (c *CertificateData) ParseCertificates() (*ParsedCertificateData, error) {
 	var cert *x509.Certificate
 	var err error
@@ -105,7 +74,6 @@ func (c *CertificateData) ParseCertificates() (*ParsedCertificateData, error) {
 		if err != nil {
 			return nil, fmt.Errorf("unable to parse certificate %w", err)
 		}
-
 	}
 
 	var caCert *x509.Certificate

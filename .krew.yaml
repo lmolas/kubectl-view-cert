@@ -15,5 +15,5 @@ spec:
         os: darwin
         arch: amd64
     uri: https://github.com/lmolas/kubectl-cert-exp/releases/download/v0.0.0.tar.gz
-    sha256: e5e620552dabf55f65a00887c4914ddc7aaaff2c00a2efc07aa20c4a9987bfdd
+    sha256: 8f2465ea99dca9ebf961bf7424ffe4738bbb36caa59ea48d5f143b7bc89ba036
     bin: kubectl-cert-exp
