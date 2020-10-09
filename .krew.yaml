@@ -14,6 +14,6 @@ spec:
       matchLabels:
         os: darwin
         arch: amd64
-    uri: https://github.com/lmolas/kubectl-view-cert/releases/download/v0.0.0.tar.gz
-    sha256: d401b0efc533fb58f908a22e7141b4198d8b7c725c98a33151a98cfa7ad6ad1d
+    uri: https://github.com/lmolas/kubectl-view-cert/releases/download/v0.0.1/kubectl-view-cert_v0.0.1.darwin_amd64.tar.gz
+    sha256: a29565aa95ddb6a87dd1decbd1a4b7633184ad3017c17b56a1e5e5b302993785
     bin: kubectl-view-cert

@@ -1,4 +1,9 @@
-[![Go Report Card](https://goreportcard.com/badge/github.com/lmolas/kubectl-view-cert)](https://goreportcard.com/report/github.com/lmolas/kubectl-view-cert) ![github actions](https://github.com/lmolas/kubectl-view-cert/workflows/golangci-lint/badge.svg)
+[![Go Report Card](https://goreportcard.com/badge/github.com/lmolas/kubectl-view-cert)](https://goreportcard.com/report/github.com/lmolas/kubectl-view-cert) 
+[![github actions](https://github.com/lmolas/kubectl-view-cert/workflows/golangci-lint/badge.svg)](https://github.com/lmolas/kubectl-view-cert/actions?query=workflow%3Agolangci-lint)
+![github actions](https://github.com/lmolas/kubectl-view-cert/workflows/release/badge.svg)
+[![GitHub release](https://img.shields.io/github/v/release/lmolas/kubectl-view-cert)](https://github.com/lmolas/kubectl-view-cert/releases/latest)
+[![License](https://img.shields.io/github/license/lmolas/kubectl-view-cert)](LICENSE)
+
 
 # kubectl-view-cert
 A kubectl plugin to view certificate information stored in secrets.
