@@ -1,19 +1,19 @@
 apiVersion: krew.googlecontainertools.github.com/v1alpha2
 kind: Plugin
 metadata:
-  name: cert-exp
+  name: view-cert
 spec:
   version: v0.0.0
   homepage: https://github.com/lmolas/kubectl-view-cert
-  shortDescription: Show certificate expiration extracted from secrets
+  shortDescription: View certificate information stored in secrets
   description: |
-    This plugin shows expiration date of certificates extracted from secrets.
-    Supported secret types are kubernetes.io/tls and istio.io/key-and-cert.
+    kubectl krew plugin to view certificate information stored in secrets.
+    Supported secret types are kubernetes.io/tls. But you can parse any type of secret by specifying secret name and secret key to read.
   platforms:
   - selector:
       matchLabels:
         os: darwin
         arch: amd64
     uri: https://github.com/lmolas/kubectl-view-cert/releases/download/v0.0.0.tar.gz
-    sha256: 51367125641127d41f21f7f58c84650ddb926cb9787bc9a1d3ce529989b35a46
+    sha256: 385ea02acd9ecf27436a460ac63142aa627d6cbc3a261e3bff6c38bce800b39b
     bin: kubectl-view-cert

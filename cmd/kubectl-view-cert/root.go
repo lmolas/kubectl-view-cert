@@ -24,6 +24,7 @@ import (
 const (
 	allNamespacesFlag      = "all-namespaces"
 	expiredFlag            = "expired"
+	showCaCertFlag         = "show-ca"
 	expiredDaysFromNowFlag = "expired-days-from-now"
 )
 
@@ -34,10 +35,10 @@ var version string
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:          "kubectl cert-exp",
+	Use:          "kubectl view-cert",
 	SilenceUsage: true, // for when RunE returns an error
-	Short:        "Show certificate fields from secrets",
-	Example:      "kubectl cert-exp -A -E",
+	Short:        "View certificate information stored in secrets",
+	Example:      "kubectl view-cert",
 	RunE:         run,
 	Version:      versionString(),
 }
@@ -65,9 +66,10 @@ func init() {
 
 	cf = genericclioptions.NewConfigFlags(true)
 
-	rootCmd.Flags().BoolP(allNamespacesFlag, "A", false, "query all objects in all API groups, both namespaced and non-namespaced")
-	rootCmd.Flags().BoolP(expiredFlag, "E", false, "show only expired certificates")
-	rootCmd.Flags().IntP(expiredDaysFromNowFlag, "D", 0, "check expired certificates compared to now plus number of days")
+	rootCmd.Flags().BoolP(allNamespacesFlag, "A", false, "Query all objects in all API groups, both namespaced and non-namespaced")
+	rootCmd.Flags().BoolP(expiredFlag, "E", false, "Show only expired certificates")
+	rootCmd.Flags().BoolP(showCaCertFlag, "S", false, "Show CA certificates")
+	rootCmd.Flags().IntP(expiredDaysFromNowFlag, "D", 0, "Show expired certificates at date in future (now plus number of days)")
 
 	cf.AddFlags(rootCmd.Flags())
 	if err := flag.Set("logtostderr", "true"); err != nil {
@@ -97,8 +99,7 @@ func main() {
 }
 
 func run(command *cobra.Command, args []string) error {
-	// TODO: flag to display cacert (false by default)
-	klog.V(1).Info("Run kubectl cert-exp")
+	klog.V(1).Info("Run kubectl view-cert")
 
 	// Parse flags and arguments
 	allNs, err := command.Flags().GetBool(allNamespacesFlag)
@@ -109,6 +110,11 @@ func run(command *cobra.Command, args []string) error {
 	expired, err := command.Flags().GetBool(expiredFlag)
 	if err != nil {
 		expired = false
+	}
+
+	showCaCert, err := command.Flags().GetBool(showCaCertFlag)
+	if err != nil {
+		showCaCert = false
 	}
 
 	expiredInDays, err := command.Flags().GetInt(expiredDaysFromNowFlag)
@@ -152,9 +158,13 @@ func run(command *cobra.Command, args []string) error {
 
 		klog.V(1).Infof("expired %t expiredInDays %d", expired, expiredInDays)
 		if expired && expiredInDays == 0 {
-			filteredDatas = filter(datas, time.Now().UTC(), dateAfterFilter)
+			filteredDatas = filterWithDate(datas, time.Now().UTC(), dateAfterFilter)
 		} else if expiredInDays > 0 {
-			filteredDatas = filter(datas, time.Now().AddDate(0, 0, expiredInDays).UTC(), dateAfterFilter)
+			filteredDatas = filterWithDate(datas, time.Now().AddDate(0, 0, expiredInDays).UTC(), dateAfterFilter)
+		}
+
+		if !showCaCert {
+			filteredDatas = filter(filteredDatas, noCaCertFilter)
 		}
 
 		// Display
