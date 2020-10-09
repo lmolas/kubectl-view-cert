@@ -1,4 +1,4 @@
-[![Go Report Card](https://goreportcard.com/badge/github.com/lmolas/kubectl-cert-exp)](https://goreportcard.com/report/github.com/lmolas/kubectl-cert-exp) ![github actions](https://github.com/lmolas/kubectl-cert-exp/workflows/golangci-lint/badge.svg)
+[![Go Report Card](https://goreportcard.com/badge/github.com/lmolas/kubectl-view-cert)](https://goreportcard.com/report/github.com/lmolas/kubectl-view-cert) ![github actions](https://github.com/lmolas/kubectl-view-cert/workflows/golangci-lint/badge.svg)
 
-# kubectl-cert-exp
+# kubectl-view-cert
 kubectl krew plugin to check certificate expiration 

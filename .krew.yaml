@@ -4,7 +4,7 @@ metadata:
   name: cert-exp
 spec:
   version: v0.0.0
-  homepage: https://github.com/lmolas/kubectl-cert-exp
+  homepage: https://github.com/lmolas/kubectl-view-cert
   shortDescription: Show certificate expiration extracted from secrets
   description: |
     This plugin shows expiration date of certificates extracted from secrets.
@@ -14,6 +14,6 @@ spec:
       matchLabels:
         os: darwin
         arch: amd64
-    uri: https://github.com/lmolas/kubectl-cert-exp/releases/download/v0.0.0.tar.gz
+    uri: https://github.com/lmolas/kubectl-view-cert/releases/download/v0.0.0.tar.gz
     sha256: 51367125641127d41f21f7f58c84650ddb926cb9787bc9a1d3ce529989b35a46
-    bin: kubectl-cert-exp
+    bin: kubectl-view-cert
