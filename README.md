@@ -28,7 +28,7 @@ Some specific flags have been added:
 
 You can search for all certificates information stored in kubernetes.io/tls secrets.
 
-If you use kubectx and kubens, you do not have to specify the context and the namespace. If you do not use kubectx or kubens, you have to add kubectl namespace and context flags to the command examples described in this documentation.
+If you use [kubectx](https://github.com/ahmetb/kubectx) and [kubens](https://github.com/ahmetb/kubectx), you do not have to specify the context and the namespace. If you do not use kubectx or kubens, you have to add kubectl namespace and context flags to the command examples described in this documentation.
 
 The following command allows browsing all certificates found in kubernetes.io/tls secrets from current namespace:
 
@@ -62,7 +62,7 @@ By using the two argument described above, you can for example browse istio secr
 
     kubectl view-cert istio.default cert-chain.pem
 
-As all outputs are json, you can chain response with any jq command to narrow your search.
+As all outputs are json, you can chain response with any [jq](https://github.com/stedolan/jq) command to narrow your search.
 
 ## License
 
