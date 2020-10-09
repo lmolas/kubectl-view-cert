@@ -8,11 +8,12 @@ import (
 type Certificate struct {
 	SecretName   string
 	Namespace    string
-	CertType     string
+	Version      int
 	SerialNumber string
 	Issuer       string
-	Subject      string
 	Validity     CertificateValidity
+	Subject      string
+	IsCA         bool
 }
 
 // CertificateValidity struct contains certificate date fields
@@ -46,5 +47,5 @@ func dateAfterFilter(data *Certificate, date time.Time) bool {
 }
 
 func noCaCertFilter(data *Certificate) bool {
-	return data.CertType != "CA Cert"
+	return !data.IsCA
 }

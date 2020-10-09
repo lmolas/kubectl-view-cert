@@ -54,7 +54,7 @@ You can also use view-cert plugin with some arguments to browse a specific secre
 
     kubectl view-cert mysecret
 
-If you want to see information from a secret wit ha different type than kubernetes.io/tls it is possible by specifying a second argument: the secret key to read. The secret key must contain base64 pem encoded data.
+If you want to see information from a secret with a different type than kubernetes.io/tls it is possible by specifying a second argument: the secret key to read. The secret key must contain base64 pem encoded data.
 
     kubectl view-cert mysecret mykey
 

@@ -15,5 +15,5 @@ spec:
         os: darwin
         arch: amd64
     uri: https://github.com/lmolas/kubectl-view-cert/releases/download/v0.0.0.tar.gz
-    sha256: 385ea02acd9ecf27436a460ac63142aa627d6cbc3a261e3bff6c38bce800b39b
+    sha256: d401b0efc533fb58f908a22e7141b4198d8b7c725c98a33151a98cfa7ad6ad1d
     bin: kubectl-view-cert

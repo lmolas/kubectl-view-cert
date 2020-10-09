@@ -35,7 +35,7 @@ var version string
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:          "kubectl view-cert",
+	Use:          "kubectl view-cert [flags] [secret-name [secret-key]]",
 	SilenceUsage: true, // for when RunE returns an error
 	Short:        "View certificate information stored in secrets",
 	Example:      "kubectl view-cert",
@@ -295,7 +295,7 @@ func parseData(ns, secretName string, data map[string]interface{}, secretKey str
 		certData = &Certificate{
 			SecretName:   parsedCerts.SecretName,
 			Namespace:    parsedCerts.Namespace,
-			CertType:     "Cert",
+			IsCA:         parsedCerts.Certificate.IsCA,
 			Issuer:       parsedCerts.Certificate.Issuer.String(),
 			SerialNumber: fmt.Sprintf("%x", parsedCerts.Certificate.SerialNumber),
 			Subject:      parsedCerts.Certificate.Subject.String(),
@@ -303,6 +303,7 @@ func parseData(ns, secretName string, data map[string]interface{}, secretKey str
 				NotBefore: parsedCerts.Certificate.NotBefore,
 				NotAfter:  parsedCerts.Certificate.NotAfter,
 			},
+			Version: parsedCerts.Certificate.Version,
 		}
 	}
 
@@ -310,7 +311,7 @@ func parseData(ns, secretName string, data map[string]interface{}, secretKey str
 		caCertData = &Certificate{
 			SecretName:   parsedCerts.SecretName,
 			Namespace:    parsedCerts.Namespace,
-			CertType:     "CA Cert",
+			IsCA:         parsedCerts.CaCertificate.IsCA,
 			Issuer:       parsedCerts.CaCertificate.Issuer.String(),
 			SerialNumber: fmt.Sprintf("%x", parsedCerts.CaCertificate.SerialNumber),
 			Subject:      parsedCerts.CaCertificate.Subject.String(),
@@ -318,6 +319,7 @@ func parseData(ns, secretName string, data map[string]interface{}, secretKey str
 				NotBefore: parsedCerts.CaCertificate.NotBefore,
 				NotAfter:  parsedCerts.CaCertificate.NotAfter,
 			},
+			Version: parsedCerts.CaCertificate.Version,
 		}
 	}
 
