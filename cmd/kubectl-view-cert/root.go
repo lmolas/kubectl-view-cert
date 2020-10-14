@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -38,9 +39,28 @@ var rootCmd = &cobra.Command{
 	Use:          "kubectl view-cert [flags] [secret-name [secret-key]]",
 	SilenceUsage: true, // for when RunE returns an error
 	Short:        "View certificate information stored in secrets",
-	Example:      "kubectl view-cert",
-	RunE:         run,
-	Version:      versionString(),
+	Example: "# List certificates from secrets in current namespace \n" +
+		"kubectl view-cert \n" +
+		"\n" +
+		"# List certificates from secrets in all namespaces \n" +
+		"kubectl view-cert -A \n" +
+		"\n" +
+		"# List expired certificates from secrets in all namespaces \n" +
+		"kubectl view-cert -A -E \n" +
+		"\n" +
+		"# List certificates that will expire in 90 days in all namespaces \n" +
+		"kubectl view-cert -A -D 90 \n" +
+		"\n" +
+		"# If you want to include CA certificate informations you can use -S flag \n" +
+		"\n" +
+		"# View certificate from a specific secret (secret is parsed only if its type is kubernetes.io.tls) \n" +
+		"kubectl view-cert mysecret \n" +
+		"\n" +
+		"# View certificate from a specific key in a specific secret (secret type could be anything as long as secret key contains base64 pem encoded data) \n" +
+		"kubectl view-cert mysecret mykey \n",
+
+	RunE:    run,
+	Version: versionString(),
 }
 
 // versionString returns the version prefixed by 'v'
@@ -93,43 +113,57 @@ func getNamespace() string {
 func main() {
 	defer klog.Flush()
 	if err := rootCmd.Execute(); err != nil {
-		klog.Error(err)
 		return
 	}
 }
 
-func run(command *cobra.Command, args []string) error {
-	klog.V(1).Info("Run kubectl view-cert")
-
-	// Parse flags and arguments
+func parseFlagsAndArguments(command *cobra.Command, args []string) (allNs, expired, showCaCert bool, expiredInDays int, secretName, secretKey string) {
 	allNs, err := command.Flags().GetBool(allNamespacesFlag)
 	if err != nil {
 		allNs = false
 	}
 
-	expired, err := command.Flags().GetBool(expiredFlag)
+	expired, err = command.Flags().GetBool(expiredFlag)
 	if err != nil {
 		expired = false
 	}
 
-	showCaCert, err := command.Flags().GetBool(showCaCertFlag)
+	showCaCert, err = command.Flags().GetBool(showCaCertFlag)
 	if err != nil {
 		showCaCert = false
 	}
 
-	expiredInDays, err := command.Flags().GetInt(expiredDaysFromNowFlag)
+	expiredInDays, err = command.Flags().GetInt(expiredDaysFromNowFlag)
 	if err != nil {
 		expiredInDays = 0
 	}
 
-	var secretName string
 	if len(args) > 0 {
 		secretName = args[0]
 	}
 
-	var secretKey string
 	if len(args) > 1 {
 		secretKey = args[1]
+	}
+
+	return
+}
+
+func run(command *cobra.Command, args []string) error {
+	klog.V(1).Info("Run kubectl view-cert")
+
+	ctx := context.Background()
+
+	// Parse flags and arguments
+	allNs, expired, showCaCert, expiredInDays, secretName, secretKey := parseFlagsAndArguments(command, args)
+
+	// Validate inputs
+	if allNs && secretName != "" {
+		return errors.New("a resource cannot be retrieved by name across all namespaces")
+	}
+
+	if secretName != "" && (expired || expiredInDays != 0 || showCaCert) {
+		return errors.New("when specifying secret name, no flags are allowed, only a second argument with secret key is allowed")
 	}
 
 	// Prepare clients to interact with kubernetes api
@@ -139,15 +173,18 @@ func run(command *cobra.Command, args []string) error {
 	}
 
 	if secretName != "" {
-		datas, err := getData(secretName, ns, secretKey, ri)
+		datas, err := getData(ctx, secretName, ns, secretKey, ri)
 		if err != nil {
 			return err
 		}
 
 		// Display
-		displayDatas(datas)
+		err = displayDatas(datas)
+		if err != nil {
+			return err
+		}
 	} else {
-		datas, err := getDatas(ri)
+		datas, err := getDatas(ctx, ri)
 		if err != nil {
 			return err
 		}
@@ -168,17 +205,20 @@ func run(command *cobra.Command, args []string) error {
 		}
 
 		// Display
-		displayDatas(filteredDatas)
+		err = displayDatas(filteredDatas)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
-func getDatas(ri dynamic.ResourceInterface) ([]*Certificate, error) {
+func getDatas(ctx context.Context, ri dynamic.ResourceInterface) ([]*Certificate, error) {
 	klog.V(1).Info("Scanning secrets")
 	datas := make([]*Certificate, 0)
 
-	tlsSecrets, err := ri.List(v1.ListOptions{FieldSelector: "type=kubernetes.io/tls"})
+	tlsSecrets, err := ri.List(ctx, v1.ListOptions{FieldSelector: "type=kubernetes.io/tls"})
 	if err != nil {
 		return datas, fmt.Errorf("failed to get secrets: %w", err)
 	}
@@ -201,12 +241,12 @@ func getDatas(ri dynamic.ResourceInterface) ([]*Certificate, error) {
 	return datas, nil
 }
 
-func getData(secretName, ns, secretKey string, ri dynamic.ResourceInterface) ([]*Certificate, error) {
+func getData(ctx context.Context, secretName, ns, secretKey string, ri dynamic.ResourceInterface) ([]*Certificate, error) {
 	klog.V(1).Infof("Get secret name %s in namespace %s", secretName, ns)
 
 	datas := make([]*Certificate, 0)
 
-	secret, err := ri.Get(secretName, v1.GetOptions{})
+	secret, err := ri.Get(ctx, secretName, v1.GetOptions{})
 	if err != nil {
 		return datas, fmt.Errorf("failed to get secret with name %s: %w", secretName, err)
 	}
@@ -227,13 +267,10 @@ func getData(secretName, ns, secretKey string, ri dynamic.ResourceInterface) ([]
 	return datas, nil
 }
 
-func displayDatas(datas []*Certificate) {
+func displayDatas(datas []*Certificate) error {
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "    ")
-	err := encoder.Encode(&datas)
-	if err != nil {
-		klog.Error(err)
-	}
+	return encoder.Encode(&datas)
 }
 
 func getResourceInterface(allNs bool, secretName string) (string, dynamic.ResourceInterface, error) {
@@ -281,14 +318,12 @@ func parseData(ns, secretName string, data map[string]interface{}, secretKey str
 
 	secretCertData, err := parse.NewCertificateData(ns, secretName, data, secretKey)
 	if err != nil {
-		klog.Errorf("failed to parse secret with name %s in namespace %s %v", secretName, ns, err)
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to parse secret with name %s in namespace %s %v", secretName, ns, err)
 	}
 
 	parsedCerts, err := secretCertData.ParseCertificates()
 	if err != nil {
-		klog.Errorf("unable to parse certificates for secret %s in namespace %s %v", secretName, ns, err)
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("unable to parse certificates for secret %s in namespace %s %v", secretName, ns, err)
 	}
 
 	if parsedCerts.Certificate != nil {
