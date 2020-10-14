@@ -5,8 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"fmt"
-
-	"k8s.io/klog"
 )
 
 // CertificateData struct contains base64 pem data
@@ -54,9 +52,6 @@ func NewCertificateData(ns, secretName string, data map[string]interface{}, secr
 		if val, ok := certsMap["ca.crt"]; ok {
 			certData.CaCertificate = fmt.Sprintf("%v", val)
 		}
-
-		klog.V(1).Infof("Cert %s", certData.Certificate)
-		klog.V(1).Infof("CaCert %s", certData.CaCertificate)
 
 		return &certData, nil
 	}

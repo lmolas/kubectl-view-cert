@@ -150,8 +150,6 @@ func parseFlagsAndArguments(command *cobra.Command, args []string) (allNs, expir
 }
 
 func run(command *cobra.Command, args []string) error {
-	klog.V(1).Info("Run kubectl view-cert")
-
 	ctx := context.Background()
 
 	// Parse flags and arguments
@@ -191,9 +189,7 @@ func run(command *cobra.Command, args []string) error {
 
 		// Filter Datas
 		filteredDatas := datas
-		klog.V(1).Infof("Number of certificates found %d", len(datas))
 
-		klog.V(1).Infof("expired %t expiredInDays %d", expired, expiredInDays)
 		if expired && expiredInDays == 0 {
 			filteredDatas = filterWithDate(datas, time.Now().UTC(), dateAfterFilter)
 		} else if expiredInDays > 0 {
@@ -215,7 +211,6 @@ func run(command *cobra.Command, args []string) error {
 }
 
 func getDatas(ctx context.Context, ri dynamic.ResourceInterface) ([]*Certificate, error) {
-	klog.V(1).Info("Scanning secrets")
 	datas := make([]*Certificate, 0)
 
 	tlsSecrets, err := ri.List(ctx, v1.ListOptions{FieldSelector: "type=kubernetes.io/tls"})
@@ -242,8 +237,6 @@ func getDatas(ctx context.Context, ri dynamic.ResourceInterface) ([]*Certificate
 }
 
 func getData(ctx context.Context, secretName, ns, secretKey string, ri dynamic.ResourceInterface) ([]*Certificate, error) {
-	klog.V(1).Infof("Get secret name %s in namespace %s", secretName, ns)
-
 	datas := make([]*Certificate, 0)
 
 	secret, err := ri.Get(ctx, secretName, v1.GetOptions{})
@@ -286,7 +279,6 @@ func getResourceInterface(allNs bool, secretName string) (string, dynamic.Resour
 	}
 
 	ns := getNamespace()
-	klog.V(1).Infof("namespace=%s allNamespaces=%v", ns, allNs)
 
 	// Check arguments
 	if secretName != "" && ns == "" {
@@ -311,11 +303,6 @@ func getResourceInterface(allNs bool, secretName string) (string, dynamic.Resour
 }
 
 func parseData(ns, secretName string, data map[string]interface{}, secretKey string) (certData, caCertData *Certificate, err error) {
-	secretType := fmt.Sprintf("%v", data["type"])
-	klog.V(1).Infof("secret type %s", secretType)
-
-	klog.V(1).Infof("%s/%s", ns, secretName)
-
 	secretCertData, err := parse.NewCertificateData(ns, secretName, data, secretKey)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to parse secret with name %s in namespace %s %v", secretName, ns, err)
