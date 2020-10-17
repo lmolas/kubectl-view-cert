@@ -18,7 +18,7 @@ Use [krew](https://krew.sigs.k8s.io/) plugin manager to install:
 
 Output of kubectl view-cert command is json.
 
-kubectl view-cert plugin is aware of all kubectl regular flags.
+kubectl view-cert plugin supports standard kubectl flags.
 
 Some specific flags have been added:
 
