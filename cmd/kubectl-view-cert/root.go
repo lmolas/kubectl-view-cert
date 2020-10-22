@@ -53,7 +53,7 @@ var rootCmd = &cobra.Command{
 		"\n" +
 		"# If you want to include CA certificate informations you can use -S flag \n" +
 		"\n" +
-		"# View certificate from a specific secret (secret is parsed only if its type is kubernetes.io.tls) \n" +
+		"# View certificate from a specific secret (secret is directly parsed if its type is kubernetes.io.tls otherwise an output of all keys in the secret is displayed) \n" +
 		"kubectl view-cert mysecret \n" +
 		"\n" +
 		"# View certificate from a specific key in a specific secret (secret type could be anything as long as secret key contains base64 pem encoded data) \n" +
@@ -149,6 +149,7 @@ func parseFlagsAndArguments(command *cobra.Command, args []string) (allNs, expir
 	return
 }
 
+// nolint gocognit // Better readability in one block
 func run(command *cobra.Command, args []string) error {
 	ctx := context.Background()
 
@@ -171,15 +172,22 @@ func run(command *cobra.Command, args []string) error {
 	}
 
 	if secretName != "" {
-		datas, err := getData(ctx, secretName, ns, secretKey, ri)
+		datas, secretKeys, err := getData(ctx, secretName, ns, secretKey, ri)
 		if err != nil {
 			return err
 		}
 
-		// Display
-		err = displayDatas(datas)
-		if err != nil {
-			return err
+		if secretKeys != nil && len(*secretKeys) > 0 {
+			fmt.Println("Specify another argument, one of:")
+			for _, key := range *secretKeys {
+				fmt.Printf("-> %s\n", key)
+			}
+		} else {
+			// Display
+			err = displayDatas(datas)
+			if err != nil {
+				return err
+			}
 		}
 	} else {
 		datas, err := getDatas(ctx, ri)
@@ -219,7 +227,7 @@ func getDatas(ctx context.Context, ri dynamic.ResourceInterface) ([]*Certificate
 	}
 
 	for _, tlsSecret := range tlsSecrets.Items {
-		certData, caCertData, err := parseData(tlsSecret.GetNamespace(), tlsSecret.GetName(), tlsSecret.Object, "")
+		certData, caCertData, _, err := parseData(tlsSecret.GetNamespace(), tlsSecret.GetName(), tlsSecret.Object, "", false)
 		if err != nil {
 			return datas, err
 		}
@@ -236,17 +244,21 @@ func getDatas(ctx context.Context, ri dynamic.ResourceInterface) ([]*Certificate
 	return datas, nil
 }
 
-func getData(ctx context.Context, secretName, ns, secretKey string, ri dynamic.ResourceInterface) ([]*Certificate, error) {
+func getData(ctx context.Context, secretName, ns, secretKey string, ri dynamic.ResourceInterface) ([]*Certificate, *[]string, error) {
 	datas := make([]*Certificate, 0)
 
 	secret, err := ri.Get(ctx, secretName, v1.GetOptions{})
 	if err != nil {
-		return datas, fmt.Errorf("failed to get secret with name %s: %w", secretName, err)
+		return datas, nil, fmt.Errorf("failed to get secret with name %s: %w", secretName, err)
 	}
 
-	certData, caCertData, err := parseData(ns, secretName, secret.Object, secretKey)
+	certData, caCertData, secretKeys, err := parseData(ns, secretName, secret.Object, secretKey, true)
 	if err != nil {
-		return datas, err
+		return datas, nil, err
+	}
+
+	if secretKeys != nil {
+		return datas, secretKeys, nil
 	}
 
 	if certData != nil {
@@ -257,7 +269,7 @@ func getData(ctx context.Context, secretName, ns, secretKey string, ri dynamic.R
 		datas = append(datas, caCertData)
 	}
 
-	return datas, nil
+	return datas, nil, nil
 }
 
 func displayDatas(datas []*Certificate) error {
@@ -302,15 +314,19 @@ func getResourceInterface(allNs bool, secretName string) (string, dynamic.Resour
 	return ns, ri, nil
 }
 
-func parseData(ns, secretName string, data map[string]interface{}, secretKey string) (certData, caCertData *Certificate, err error) {
-	secretCertData, err := parse.NewCertificateData(ns, secretName, data, secretKey)
+func parseData(ns, secretName string, data map[string]interface{}, secretKey string, listKeys bool) (certData, caCertData *Certificate, secretKeys *[]string, err error) {
+	secretCertData, err := parse.NewCertificateData(ns, secretName, data, secretKey, listKeys)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse secret with name %s in namespace %s %v", secretName, ns, err)
+		return nil, nil, nil, fmt.Errorf("failed to parse secret with name %s in namespace %s %v", secretName, ns, err)
+	}
+
+	if len(secretCertData.SecretKeys) > 0 {
+		return nil, nil, &secretCertData.SecretKeys, nil
 	}
 
 	parsedCerts, err := secretCertData.ParseCertificates()
 	if err != nil {
-		return nil, nil, fmt.Errorf("unable to parse certificates for secret %s in namespace %s %v", secretName, ns, err)
+		return nil, nil, nil, fmt.Errorf("unable to parse certificates for secret %s in namespace %s %v", secretName, ns, err)
 	}
 
 	if parsedCerts.Certificate != nil {
@@ -345,5 +361,5 @@ func parseData(ns, secretName string, data map[string]interface{}, secretKey str
 		}
 	}
 
-	return certData, caCertData, err
+	return certData, caCertData, nil, err
 }

@@ -13,6 +13,7 @@ type CertificateData struct {
 	Namespace     string
 	Certificate   string
 	CaCertificate string
+	SecretKeys    []string
 }
 
 // ParsedCertificateData struct contains decoded x509 certificates
@@ -24,7 +25,7 @@ type ParsedCertificateData struct {
 }
 
 // NewCertificateData takes secret data and extracts base64 pem strings
-func NewCertificateData(ns, secretName string, data map[string]interface{}, secretKey string) (*CertificateData, error) {
+func NewCertificateData(ns, secretName string, data map[string]interface{}, secretKey string, listKeys bool) (*CertificateData, error) {
 	certsMap := data["data"].(map[string]interface{})
 
 	certData := CertificateData{
@@ -51,6 +52,18 @@ func NewCertificateData(ns, secretName string, data map[string]interface{}, secr
 
 		if val, ok := certsMap["ca.crt"]; ok {
 			certData.CaCertificate = fmt.Sprintf("%v", val)
+		}
+
+		return &certData, nil
+	}
+
+	if listKeys && certsMap != nil && len(certsMap) > 0 {
+		certData.SecretKeys = make([]string, len(certsMap))
+		i := 0
+
+		for key, _ := range certsMap {
+			certData.SecretKeys[i] = key
+			i++
 		}
 
 		return &certData, nil
