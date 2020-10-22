@@ -54,7 +54,7 @@ If you want to see all certificates with CA cert information in all namespaces:
 
     kubectl view-cert -A -S
 
-You can also use view-cert plugin with some arguments to browse a specific secret (secret name is the first argument). The secret will be parsed only its type is kubernetes.io/tls:
+You can also use view-cert plugin with some arguments to browse a specific secret (secret name is the first argument). The secret will be parsed only if its type is kubernetes.io/tls:
 
     kubectl view-cert mysecret
 
