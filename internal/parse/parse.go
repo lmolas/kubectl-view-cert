@@ -61,7 +61,7 @@ func NewCertificateData(ns, secretName string, data map[string]interface{}, secr
 		certData.SecretKeys = make([]string, len(certsMap))
 		i := 0
 
-		for key, _ := range certsMap {
+		for key := range certsMap {
 			certData.SecretKeys[i] = key
 			i++
 		}
