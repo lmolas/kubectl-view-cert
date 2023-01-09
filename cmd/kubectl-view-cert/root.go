@@ -29,6 +29,15 @@ const (
 	expiredDaysFromNowFlag = "expired-days-from-now"
 )
 
+type parsedFlags struct {
+	allNs         bool
+	expired       bool
+	showCaCert    bool
+	expiredInDays int
+	secretName    string
+	secretKey     string
+}
+
 var cf *genericclioptions.ConfigFlags
 
 // This variable is populated by goreleaser
@@ -117,27 +126,28 @@ func main() {
 	}
 }
 
-func parseFlagsAndArguments(command *cobra.Command, args []string) (allNs, expired, showCaCert bool, expiredInDays int, secretName, secretKey string) {
+func parseFlagsAndArguments(command *cobra.Command, args []string) parsedFlags {
 	allNs, err := command.Flags().GetBool(allNamespacesFlag)
 	if err != nil {
 		allNs = false
 	}
 
-	expired, err = command.Flags().GetBool(expiredFlag)
+	expired, err := command.Flags().GetBool(expiredFlag)
 	if err != nil {
 		expired = false
 	}
 
-	showCaCert, err = command.Flags().GetBool(showCaCertFlag)
+	showCaCert, err := command.Flags().GetBool(showCaCertFlag)
 	if err != nil {
 		showCaCert = false
 	}
 
-	expiredInDays, err = command.Flags().GetInt(expiredDaysFromNowFlag)
+	expiredInDays, err := command.Flags().GetInt(expiredDaysFromNowFlag)
 	if err != nil {
 		expiredInDays = 0
 	}
 
+	var secretName, secretKey string
 	if len(args) > 0 {
 		secretName = args[0]
 	}
@@ -146,7 +156,7 @@ func parseFlagsAndArguments(command *cobra.Command, args []string) (allNs, expir
 		secretKey = args[1]
 	}
 
-	return
+	return parsedFlags{allNs, expired, showCaCert, expiredInDays, secretName, secretKey}
 }
 
 // nolint gocognit // Better readability in one block
@@ -154,25 +164,25 @@ func run(command *cobra.Command, args []string) error {
 	ctx := context.Background()
 
 	// Parse flags and arguments
-	allNs, expired, showCaCert, expiredInDays, secretName, secretKey := parseFlagsAndArguments(command, args)
+	parsedFlags := parseFlagsAndArguments(command, args)
 
 	// Validate inputs
-	if allNs && secretName != "" {
+	if parsedFlags.allNs && parsedFlags.secretName != "" {
 		return errors.New("a resource cannot be retrieved by name across all namespaces")
 	}
 
-	if secretName != "" && (expired || expiredInDays != 0 || showCaCert) {
+	if parsedFlags.secretName != "" && (parsedFlags.expired || parsedFlags.expiredInDays != 0 || parsedFlags.showCaCert) {
 		return errors.New("when specifying secret name, no flags are allowed, only a second argument with secret key is allowed")
 	}
 
 	// Prepare clients to interact with kubernetes api
-	ns, ri, err := getResourceInterface(allNs, secretName)
+	ns, ri, err := getResourceInterface(parsedFlags.allNs, parsedFlags.secretName)
 	if err != nil {
 		return err
 	}
 
-	if secretName != "" {
-		datas, secretKeys, err := getData(ctx, secretName, ns, secretKey, ri)
+	if parsedFlags.secretName != "" {
+		datas, secretKeys, err := getData(ctx, parsedFlags.secretName, ns, parsedFlags.secretKey, ri)
 		if err != nil {
 			return err
 		}
@@ -198,13 +208,13 @@ func run(command *cobra.Command, args []string) error {
 		// Filter Datas
 		filteredDatas := datas
 
-		if expired && expiredInDays == 0 {
+		if parsedFlags.expired && parsedFlags.expiredInDays == 0 {
 			filteredDatas = filterWithDate(datas, time.Now().UTC(), dateAfterFilter)
-		} else if expiredInDays > 0 {
-			filteredDatas = filterWithDate(datas, time.Now().AddDate(0, 0, expiredInDays).UTC(), dateAfterFilter)
+		} else if parsedFlags.expiredInDays > 0 {
+			filteredDatas = filterWithDate(datas, time.Now().AddDate(0, 0, parsedFlags.expiredInDays).UTC(), dateAfterFilter)
 		}
 
-		if !showCaCert {
+		if !parsedFlags.showCaCert {
 			filteredDatas = filter(filteredDatas, noCaCertFilter)
 		}
 
